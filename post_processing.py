@@ -99,6 +99,7 @@ def video_post_process(opt, video_list, video_dict):
         result_dict[video_name[2:]] = proposal_list
 
 
+'''
 def BMN_post_processing(opt):
     video_dict = getDatasetDict(opt)
     video_list = list(video_dict.keys())  # [:100]
@@ -125,6 +126,35 @@ def BMN_post_processing(opt):
     outfile = open(opt["result_file"], "w")
     json.dump(output_dict, outfile)
     outfile.close()
+'''
+
+
+def BMN_post_processing(cfg):
+    num_threads = 8
+    video_dict = getDatasetDict(cfg)
+    video_list = list(video_dict.keys())  # [:100]
+    global result_dict
+    result_dict = mp.Manager().dict()
+
+    num_videos = len(video_list)
+    num_videos_per_thread = num_videos // num_threads
+    processes = []
+    for tid in range(num_threads - 1):
+        tmp_video_list = video_list[tid * num_videos_per_thread:(tid + 1) * num_videos_per_thread]
+        p = mp.Process(target=video_post_process, args=(cfg, tmp_video_list, video_dict))
+        p.start()
+        processes.append(p)
+    tmp_video_list = video_list[(num_threads - 1) * num_videos_per_thread:]
+    p = mp.Process(target=video_post_process, args=(cfg, tmp_video_list, video_dict))
+    p.start()
+    processes.append(p)
+    for p in processes:
+        p.join()
+
+    result_dict = dict(result_dict)
+    with open('./results/post_processing_results.json', 'w') as f:
+        json.dump(result_dict, f)
+
 
 # opt = opts.parse_opt()
 # opt = vars(opt)

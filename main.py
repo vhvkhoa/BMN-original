@@ -117,12 +117,44 @@ def evaluate(cfg, data_loader, model, epoch, n_iter, writer):
 
             col_name = ["xmin", "xmax", "xmin_score", "xmax_score", "score"]
             new_df = pd.DataFrame(new_props, columns=col_name)
-            new_df.to_csv(os.path.join(cfg.BMN.POST_PROCESS.IMD_RESULTS_DIR, video_name + ".csv"), index=False)
+            new_df.to_csv(os.path.join('results/', video_name + ".csv"), index=False)
 
     print("Post processing start")
     BMN_post_processing(cfg)
     print("Post processing finished")
     evaluate_proposals(cfg)
+
+    with open('results/scores.json', 'r') as f:
+        scores = json.load(f)
+
+    if os.path.isfile('checkpoints/best_scores.json'):
+        with open('checkpoints/best_scores.json', 'r') as f:
+            best_scores = json.load(f)
+
+        for metric, sub_scores in scores.items():
+            for i, score in enumerate(sub_scores):
+                writer.add_scalar(metric + '_' + str(i), score, n_iter)
+
+                if score > best_scores[metric][i]:
+                    best_scores[metric][i] = score
+                    state = {
+                        'epoch': epoch + 1,
+                        'iter': n_iter,
+                        'state_dict': model.state_dict()
+                    }
+                    torch.save(state, os.path.join('checkpoints/', 'best_%s_%d.pth.tar' % (metric, i)))
+    else:
+        best_scores = scores
+
+    with open('checkpoints/best_scores.json', 'w') as f:
+        json.dump(best_scores, f)
+
+    state = {
+        'epoch': epoch + 1,
+        'iter': n_iter,
+        'state_dict': model.state_dict()
+    }
+    torch.save(state, os.path.join('checkpoints/', 'model_%d_%d.pth.tar' % (epoch + 1, n_iter)))
 
 
 def test_BMN(data_loader, model, epoch, bm_mask):
@@ -182,7 +214,8 @@ def BMN_Train(opt):
     for epoch in range(opt["train_epochs"]):
         scheduler.step()
         train_BMN(train_loader, model, optimizer, epoch, bm_mask, writer)
-        test_BMN(test_loader, model, epoch, bm_mask)
+        # test_BMN(test_loader, model, epoch, bm_mask)
+        evaluate(opt, test_loader, model, epoch, 0, writer)
 
 
 def BMN_inference(opt):
